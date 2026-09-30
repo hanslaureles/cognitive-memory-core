@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from recall import recall_memories, format_injection_header, tokenize
 from reflect import record_reflection, load_all_memories, save_all_memories
-from crystallize import crystallize, build_markdown_rules
+from crystallize import crystallize, build_markdown_rules, find_workspace_root
 
 
 class TestRecallEngine(unittest.TestCase):
@@ -198,6 +198,26 @@ class TestCrystallizeEngine(unittest.TestCase):
         self.assertIn("MEM-002", content)
         self.assertIn("MEM-003", content)
         temp_dir.cleanup()
+
+    def test_workspace_root_found_through_nested_projects_dir(self):
+        """Rules must resolve to the ancestor that owns .agents/, not the repo's direct parent."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp).resolve()
+            (workspace / ".agents" / "rules").mkdir(parents=True)
+            script = workspace / "Projects" / "agent-memory" / "crystallize.py"
+            script.parent.mkdir(parents=True)
+            script.touch()
+            self.assertEqual(find_workspace_root(script), workspace)
+
+    def test_workspace_root_falls_back_without_agents_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp).resolve() / "repo" / "crystallize.py"
+            script.parent.mkdir(parents=True)
+            script.touch()
+            # No .agents/ anywhere under tmp; ancestors above tmp are assumed not to have one either.
+            if any((p / ".agents").is_dir() for p in Path(tmp).resolve().parents):
+                self.skipTest("An ancestor of the temp dir has .agents/")
+            self.assertEqual(find_workspace_root(script), Path(tmp).resolve())
 
 
 if __name__ == "__main__":

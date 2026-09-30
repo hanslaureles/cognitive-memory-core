@@ -21,7 +21,23 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 DEFAULT_STORE = Path(__file__).parent / "store" / "experience_store.jsonl"
-WORKSPACE_ROOT = Path(__file__).parent.parent
+
+
+def find_workspace_root(start: Path = None) -> Path:
+    """
+    Walk upward from this file to the nearest directory that owns an `.agents/` folder,
+    so the compiled rules land where agents actually read them no matter how deeply
+    this repo is nested (e.g. C:\\AI-Workspace\\Projects\\agent-memory -> C:\\AI-Workspace).
+    Falls back to the parent of this repo when no `.agents/` directory exists yet.
+    """
+    here = (start or Path(__file__)).resolve()
+    for candidate in here.parents:
+        if (candidate / ".agents").is_dir():
+            return candidate
+    return here.parent.parent
+
+
+WORKSPACE_ROOT = find_workspace_root()
 DEFAULT_RULES_OUTPUT = WORKSPACE_ROOT / ".agents" / "rules" / "learned_rules.md"
 
 
