@@ -17,7 +17,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from reflect import record_reflection, load_all_memories, redact_secrets, STALE_LOCK_S
+from reflect import (record_reflection, load_all_memories, redact_secrets, store_lock,
+                     _save_if_owned, STALE_LOCK_S)
 
 HERE = Path(__file__).parent
 
@@ -94,6 +95,34 @@ class TestStaleLock(unittest.TestCase):
             res = record_reflection(domain="d", trigger="t", symptom="s", root_cause="r",
                                     permanent_rule="p", store_path=store)
             self.assertEqual(res["status"], "created")
+            self.assertFalse(lock.exists())
+
+
+class TestSlowLiveOwner(unittest.TestCase):
+    """A live writer stalled past STALE_LOCK_S loses the lock; it must neither
+    write over the new owner's work nor delete the new owner's lock."""
+
+    def age(self, path):
+        old = time.time() - STALE_LOCK_S - 5
+        os.utime(path, (old, old))
+
+    def test_reclaimed_writer_keeps_hands_off(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Path(tmp) / "store.jsonl"
+            lock = Path(tmp) / "store.jsonl.lock"
+            slow = store_lock(store)
+            slow_owned = slow.__enter__()
+            self.age(lock)                       # the slow writer stalls past the limit
+            fast = store_lock(store)
+            fast_owned = fast.__enter__()        # a second writer reclaims the lock
+            self.assertFalse(slow_owned())
+            self.assertTrue(fast_owned())
+            with self.assertRaises(TimeoutError):
+                _save_if_owned([{"id": "MEM-001"}], store, slow_owned)
+            self.assertFalse(store.exists())     # the slow writer wrote nothing
+            slow.__exit__(None, None, None)
+            self.assertTrue(lock.exists())       # and left the new owner's lock alone
+            fast.__exit__(None, None, None)
             self.assertFalse(lock.exists())
 
 

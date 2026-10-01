@@ -13,6 +13,7 @@ import re
 import sys
 import json
 import time
+import uuid
 import argparse
 import tempfile
 from contextlib import contextmanager
@@ -51,14 +52,27 @@ def store_lock(store_path: Path):
     Cross-process mutex around a read-modify-write of the store: an O_EXCL
     lockfile next to it. Without it, two reflect.py runs both read N records
     and both write N+1, and one lesson is lost.
+
+    Yields still_owned(): a lock older than STALE_LOCK_S is presumed dead and
+    reclaimed, so a writer stalled that long may have lost it. It must check
+    before writing, and on exit it only removes a lock that still holds its own
+    token. (No PID-liveness probe: os.kill(pid, 0) is not a probe on Windows.)
     """
     lock_path = store_path.with_name(store_path.name + ".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
+    token = f"{os.getpid()}:{uuid.uuid4().hex}"
     deadline = time.monotonic() + LOCK_TIMEOUT_S
+
+    def still_owned() -> bool:
+        try:
+            return lock_path.read_text(encoding="utf-8") == token
+        except OSError:
+            return False
+
     while True:
         try:
             fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(fd, str(os.getpid()).encode())
+            os.write(fd, token.encode("utf-8"))
             os.close(fd)
             break
         except FileExistsError:
@@ -72,10 +86,13 @@ def store_lock(store_path: Path):
                 raise TimeoutError(f"store is locked by another writer: {lock_path}")
             time.sleep(0.02)
     try:
-        yield
+        yield still_owned
     finally:
         try:
-            lock_path.unlink()
+            # ponytail: check-then-unlink has a tiny window; fine for a lock
+            # that only changes hands after 30 s of silence.
+            if still_owned():
+                lock_path.unlink()
         except FileNotFoundError:
             pass
 
@@ -158,13 +175,19 @@ def record_reflection(
         redact_secrets(s) for s in (domain, trigger, symptom, root_cause, permanent_rule, fix_applied)
     )
     tags = [redact_secrets(t) for t in (tags or [])]
-    with store_lock(store_path):
+    with store_lock(store_path) as still_owned:
         return _record_locked(domain, trigger, symptom, root_cause, permanent_rule,
-                              fix_applied, tags, severity, store_path)
+                              fix_applied, tags, severity, store_path, still_owned)
+
+
+def _save_if_owned(records, store_path, still_owned) -> None:
+    if not still_owned():
+        raise TimeoutError("store lock was reclaimed by another writer (held too long); lesson not written")
+    save_all_memories(records, store_path)
 
 
 def _record_locked(domain, trigger, symptom, root_cause, permanent_rule,
-                   fix_applied, tags, severity, store_path) -> Dict[str, Any]:
+                   fix_applied, tags, severity, store_path, still_owned) -> Dict[str, Any]:
     records = load_all_memories(store_path)
     now = get_current_iso_timestamp()
     clean_tags = [t.strip().lower() for t in (tags or []) if t.strip()]
@@ -189,7 +212,7 @@ def _record_locked(domain, trigger, symptom, root_cause, permanent_rule,
         sev_rank = {"low": 1, "medium": 2, "high": 3, "critical": 4}
         if sev_rank.get(severity, 2) > sev_rank.get(existing.get("severity", "medium"), 2):
             existing["severity"] = severity
-        save_all_memories(records, store_path)
+        _save_if_owned(records, store_path, still_owned)
         return {
             "status": "updated_frequency",
             "id": existing.get("id"),
@@ -225,7 +248,7 @@ def _record_locked(domain, trigger, symptom, root_cause, permanent_rule,
     }
 
     records.append(new_record)
-    save_all_memories(records, store_path)
+    _save_if_owned(records, store_path, still_owned)
     return {
         "status": "created",
         "id": new_id,
