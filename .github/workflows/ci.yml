@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      # Stdlib only: pytest is the sole install.
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Compile every module
+        run: python -m py_compile *.py
+
+      - name: Tests
+        run: python -m pytest -q
