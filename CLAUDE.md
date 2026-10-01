@@ -35,7 +35,8 @@ Zero-Dependency Cognitive Memory Engine (Self-Improving Agent Flywheel). Enables
 ## Security Requirements
 - Never log plaintext API keys, passwords, or personal credentials into episodic memory.
 - `reflect.py` redacts credential shapes (Groq, Google, OpenAI/Anthropic keys, Discord tokens, Bearer headers) before writing to `store/experience_store.jsonl`. Other personal data in stack traces is still the caller's job to strip.
-- Writes hold `store/experience_store.jsonl.lock` (O_EXCL lockfile; reclaimed after 30 s if a writer died) and replace the store atomically.
+- Writes hold an OS file lock (`msvcrt` on Windows, `fcntl` elsewhere) on `store/experience_store.jsonl.lock` for the whole read-modify-write, and replace the store atomically. The OS releases the lock if the holder dies; there is no age-based takeover. Other writers wait up to 10 s, then raise `TimeoutError`. The `.lock` file stays on disk (gitignored); don't delete it.
+- Measure recall latency with `python bench_recall.py` (prints p50/p95/max with date, CPU, OS, Python and store size).
 
 ## Deployment Information
 - Local library and CLI utility used directly by agents and local orchestration scripts.

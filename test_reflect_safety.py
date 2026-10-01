@@ -4,7 +4,8 @@ test_reflect_safety.py - Write-safety and redaction regressions for reflect.py (
 
 1. Two processes recording at once must not lose lessons.
 2. Credential-shaped strings never reach the store.
-3. A lock left behind by a dead process does not block writers forever.
+3. A writer that died holding the lock does not block the next one.
+4. A slow but live writer keeps the lock, however long it holds it.
 """
 
 import os
@@ -14,11 +15,12 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from reflect import (record_reflection, load_all_memories, redact_secrets, store_lock,
-                     _save_if_owned, STALE_LOCK_S)
+import reflect
+from reflect import record_reflection, load_all_memories, redact_secrets, store_lock
 
 HERE = Path(__file__).parent
 
@@ -49,10 +51,10 @@ class TestConcurrentWriters(unittest.TestCase):
             for p, err in zip(procs, errors):
                 self.assertEqual(p.returncode, 0, err[-2000:])
             records = load_all_memories(store)
-            leftovers = [n for n in os.listdir(tmp) if n != "store.jsonl"]
+            leftovers = [n for n in os.listdir(tmp) if n not in ("store.jsonl", "store.jsonl.lock")]
         self.assertEqual(len(records), 2 * per_proc)
         self.assertEqual(len({r["id"] for r in records}), 2 * per_proc)
-        self.assertEqual(leftovers, [])  # no stray temp or lock files
+        self.assertEqual(leftovers, [])  # no stray temp files
 
 
 class TestRedaction(unittest.TestCase):
@@ -84,46 +86,61 @@ class TestRedaction(unittest.TestCase):
         self.assertEqual(redact_secrets(text), text)
 
 
-class TestStaleLock(unittest.TestCase):
-    def test_dead_writers_lock_is_reclaimed(self):
+HOLDER = """
+import sys, time
+sys.path.insert(0, {here!r})
+from pathlib import Path
+from reflect import store_lock
+with store_lock(Path(sys.argv[1])):
+    print("locked", flush=True)
+    time.sleep(60)
+"""
+
+
+def record(store, n=0):
+    return record_reflection(domain="d", trigger="t", symptom=f"s{n}", root_cause="r",
+                             permanent_rule=f"p{n}", store_path=store)
+
+
+class TestDeadHolder(unittest.TestCase):
+    def test_lock_of_a_killed_writer_is_released_by_the_os(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = Path(tmp) / "store.jsonl"
-            lock = Path(tmp) / "store.jsonl.lock"
-            lock.write_text("99999")
-            old = time.time() - STALE_LOCK_S - 5
-            os.utime(lock, (old, old))
-            res = record_reflection(domain="d", trigger="t", symptom="s", root_cause="r",
-                                    permanent_rule="p", store_path=store)
-            self.assertEqual(res["status"], "created")
-            self.assertFalse(lock.exists())
+            holder = subprocess.Popen([sys.executable, "-c", HOLDER.format(here=str(HERE)), str(store)],
+                                      stdout=subprocess.PIPE)
+            try:
+                self.assertEqual(holder.stdout.readline().strip(), b"locked")
+                holder.kill()                     # dies mid-critical-section
+                holder.wait(timeout=10)
+            finally:
+                holder.stdout.close()
+            t0 = time.monotonic()
+            self.assertEqual(record(store)["status"], "created")
+            self.assertLess(time.monotonic() - t0, 2.0)  # no stale-lock wait
+
+    def test_leftover_lock_file_does_not_block(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Path(tmp) / "store.jsonl"
+            (Path(tmp) / "store.jsonl.lock").write_text("from an old crash")
+            self.assertEqual(record(store)["status"], "created")
 
 
 class TestSlowLiveOwner(unittest.TestCase):
-    """A live writer stalled past STALE_LOCK_S loses the lock; it must neither
-    write over the new owner's work nor delete the new owner's lock."""
+    """A slow but live holder keeps the lock, however old the lock file looks:
+    nothing can take it over and write while the holder may still replace the store."""
 
-    def age(self, path):
-        old = time.time() - STALE_LOCK_S - 5
-        os.utime(path, (old, old))
-
-    def test_reclaimed_writer_keeps_hands_off(self):
+    def test_other_writers_wait_then_time_out(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = Path(tmp) / "store.jsonl"
             lock = Path(tmp) / "store.jsonl.lock"
-            slow = store_lock(store)
-            slow_owned = slow.__enter__()
-            self.age(lock)                       # the slow writer stalls past the limit
-            fast = store_lock(store)
-            fast_owned = fast.__enter__()        # a second writer reclaims the lock
-            self.assertFalse(slow_owned())
-            self.assertTrue(fast_owned())
-            with self.assertRaises(TimeoutError):
-                _save_if_owned([{"id": "MEM-001"}], store, slow_owned)
-            self.assertFalse(store.exists())     # the slow writer wrote nothing
-            slow.__exit__(None, None, None)
-            self.assertTrue(lock.exists())       # and left the new owner's lock alone
-            fast.__exit__(None, None, None)
-            self.assertFalse(lock.exists())
+            with store_lock(store):
+                hour_ago = time.time() - 3600
+                os.utime(lock, (hour_ago, hour_ago))  # age is irrelevant now
+                with mock.patch.object(reflect, "LOCK_TIMEOUT_S", 0.3):
+                    with self.assertRaises(TimeoutError):
+                        record(store)
+                self.assertFalse(store.exists())       # the waiting writer wrote nothing
+            self.assertEqual(record(store)["status"], "created")  # free once released
 
 
 if __name__ == "__main__":
