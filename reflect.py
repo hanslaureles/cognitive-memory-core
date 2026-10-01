@@ -9,14 +9,75 @@ Pure Python standard library.
 """
 
 import os
+import re
 import sys
 import json
+import time
 import argparse
+import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 DEFAULT_STORE = Path(__file__).parent / "store" / "experience_store.jsonl"
+
+# Credential shapes that must never reach the store (it is read back into agent
+# prompts and committed to git). Replaced before dedup and before writing.
+SECRET_PATTERNS = [
+    re.compile(r"gsk_[A-Za-z0-9]{20,}"),                                    # Groq
+    re.compile(r"AIza[0-9A-Za-z_\-]{35}"),                                  # Google API key
+    re.compile(r"sk-(?:proj-|ant-)?[A-Za-z0-9_\-]{20,}"),                   # OpenAI / Anthropic
+    re.compile(r"[A-Za-z0-9_\-]{24,}\.[A-Za-z0-9_\-]{6}\.[A-Za-z0-9_\-]{27,}"),  # Discord bot token
+    re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]{16,}"),                     # Authorization header
+]
+REDACTED = "[REDACTED]"
+
+LOCK_TIMEOUT_S = 10.0
+# A lock older than this was left by a process that died mid-write.
+STALE_LOCK_S = 30.0
+
+
+def redact_secrets(text: str) -> str:
+    """Replace credential-shaped substrings with [REDACTED]."""
+    for pattern in SECRET_PATTERNS:
+        text = pattern.sub(lambda m: (m.group(1) if m.groups() else "") + REDACTED, text)
+    return text
+
+
+@contextmanager
+def store_lock(store_path: Path):
+    """
+    Cross-process mutex around a read-modify-write of the store: an O_EXCL
+    lockfile next to it. Without it, two reflect.py runs both read N records
+    and both write N+1, and one lesson is lost.
+    """
+    lock_path = store_path.with_name(store_path.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + LOCK_TIMEOUT_S
+    while True:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            break
+        except FileExistsError:
+            try:
+                if time.time() - lock_path.stat().st_mtime > STALE_LOCK_S:
+                    lock_path.unlink()
+                    continue
+            except FileNotFoundError:
+                continue
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"store is locked by another writer: {lock_path}")
+            time.sleep(0.02)
+    try:
+        yield
+    finally:
+        try:
+            lock_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def get_current_iso_timestamp() -> str:
@@ -43,11 +104,27 @@ def load_all_memories(store_path: Path = DEFAULT_STORE) -> List[Dict[str, Any]]:
 def save_all_memories(records: List[Dict[str, Any]], store_path: Path = DEFAULT_STORE) -> None:
     """Atomic write of all entries back to experience store."""
     store_path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = store_path.with_suffix(".tmp")
-    with open(temp_path, "w", encoding="utf-8") as f:
-        for r in records:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    temp_path.replace(store_path)
+    # A unique temp name per writer: a shared ".tmp" let two writers clobber
+    # each other's half-written file.
+    fd, temp_name = tempfile.mkstemp(dir=store_path.parent, prefix=store_path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            for r in records:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+        # On Windows the rename fails while a reader (recall.py) has the store
+        # open; that window is milliseconds, so retry briefly.
+        for attempt in range(50):
+            try:
+                os.replace(temp_name, store_path)
+                break
+            except PermissionError:
+                if attempt == 49:
+                    raise
+                time.sleep(0.02)
+    except BaseException:
+        if os.path.exists(temp_name):
+            os.unlink(temp_name)
+        raise
 
 
 def compute_token_overlap(str1: str, str2: str) -> float:
@@ -75,7 +152,19 @@ def record_reflection(
     """
     Append or update an episodic memory. If an existing memory shares high similarity
     in permanent_rule or symptom, increment its frequency count instead of duplicating.
+    Credential-shaped strings are redacted first; the whole update holds store_lock.
     """
+    domain, trigger, symptom, root_cause, permanent_rule, fix_applied = (
+        redact_secrets(s) for s in (domain, trigger, symptom, root_cause, permanent_rule, fix_applied)
+    )
+    tags = [redact_secrets(t) for t in (tags or [])]
+    with store_lock(store_path):
+        return _record_locked(domain, trigger, symptom, root_cause, permanent_rule,
+                              fix_applied, tags, severity, store_path)
+
+
+def _record_locked(domain, trigger, symptom, root_cause, permanent_rule,
+                   fix_applied, tags, severity, store_path) -> Dict[str, Any]:
     records = load_all_memories(store_path)
     now = get_current_iso_timestamp()
     clean_tags = [t.strip().lower() for t in (tags or []) if t.strip()]
