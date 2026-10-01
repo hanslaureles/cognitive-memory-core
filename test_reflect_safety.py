@@ -82,8 +82,16 @@ class TestRedaction(unittest.TestCase):
         self.assertIn("Bearer [REDACTED]", raw)
 
     def test_ordinary_text_is_untouched(self):
-        text = "Use sk-learn style names; bearer of bad news; AIza is just a prefix; gsk_short"
+        text = ("Use sk-learn style names; bearer of bad news; AIza is just a prefix; gsk_short; "
+                "send a Bearer token header; Bearer authentication failed")
         self.assertEqual(redact_secrets(text), text)
+
+    def test_long_bearer_value_is_redacted_even_if_harmless(self):
+        # Deliberate fail-safe: after "Bearer", 16+ token characters are treated as a
+        # credential even when they might be prose or a placeholder. The store is
+        # replayed into agent prompts and committed, so over-redacting is the safe error.
+        self.assertEqual(redact_secrets("Bearer your-access-token-here"), "Bearer [REDACTED]")
+        self.assertEqual(redact_secrets("Bearer token-authentication-flow"), "Bearer [REDACTED]")
 
 
 HOLDER = """
