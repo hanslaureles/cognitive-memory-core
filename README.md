@@ -3,6 +3,8 @@
 > **Lightweight episodic memory retrieval engine in pure Python standard library using BM25 heuristic scoring for developer coding agents.**  
 > Zero external dependencies · Sub-millisecond execution · Fully tested with `unittest` (10/10 passing).
 
+[![CI](https://github.com/hanslaureles/cognitive-memory-core/actions/workflows/ci.yml/badge.svg)](https://github.com/hanslaureles/cognitive-memory-core/actions/workflows/ci.yml)
+
 ---
 
 ## 🎯 The Problem
