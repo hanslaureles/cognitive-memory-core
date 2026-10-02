@@ -82,23 +82,6 @@ python eval/run_eval.py --check
 - `test_reflect_safety.py`: concurrent writers, lock release when a writer dies, lock timeout, and credential redaction.
 - `eval/test_run_eval.py`: eval metric math, and that every eval query is held out from the store.
 - `eval/run_eval.py --check`: fails if BM25 recall@3 or MRR on the held-out queries drops below the measured baseline.
-----------------------------------------------------------------------
-Ran 10 tests in 0.015s
-
-OK
-```
-
-### Verified Test Cases
-1. `test_tokenize_stopwords_filtered`: Stopword removal across task descriptions.
-2. `test_recall_copywriting_query`: Correctly matches brand tone anti-patterns (`MEM-001`).
-3. `test_recall_css_bracket_wrapping_query`: Correctly retrieves flexbox wrap rule (`MEM-002`).
-4. `test_recall_edge_routing_query`: Resolves subfolder 404 order precedence (`MEM-003`).
-5. `test_recall_nested_powershell_query`: Identifies PowerShell quote breaking rules (`MEM-005`).
-6. `test_record_reflection_new_entry`: Validates structured schema generation and atomic append.
-7. `test_record_reflection_duplicate_prevention`: Prevents redundant identical rule logging.
-8. `test_crystallize_output`: Verifies Markdown rule document compilation.
-9. `test_format_injection_header`: Formats pre-flight injection blocks for agent context.
-10. `test_top_k_limiting`: Strict top-k ranking and score threshold compliance.
 
 ---
 
