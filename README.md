@@ -100,6 +100,27 @@ OK
 
 ---
 
+## 📏 Retrieval Eval
+
+30 held-out queries in [`eval/queries.jsonl`](eval/queries.jsonl), each paraphrased (no 4-token run copied from the store, enforced by a test) and labelled with one expected rule. Full run: [`eval/results/2026-10-02.md`](eval/results/2026-10-02.md).
+
+| Retriever | recall@1 | recall@3 | MRR |
+|---|---|---|---|
+| BM25 (`recall.py`) | 0.83 | 0.90 | 0.87 |
+| Naive substring baseline | 0.80 | 0.93 | 0.87 |
+
+| Store size | p50 | p95 |
+|---|---|---|
+| 10 entries (real store) | 0.81 ms | 0.87 ms |
+| 1,000 (synthetic) | 67 ms | 70 ms |
+| 10,000 (synthetic) | 695 ms | 744 ms |
+
+Measured 2026-10-02 on an Intel Core i5-12400F, Windows 11, Python 3.11.9, commit `a9a7e96`. Latency is per `recall_memories()` call, including reading and parsing the JSONL store.
+
+What it shows: on today's 10-entry store, BM25 is not clearly better than grep. It ties on MRR, and with 10 entries a top-3 list covers 30% of the store. Latency grows linearly, because every call re-reads and re-scores the whole store. CI fails if BM25 recall@3 or MRR drops below these numbers minus a tolerance (`python eval/run_eval.py --check`).
+
+---
+
 ## 🚀 Quick Usage
 
 ```python
