@@ -28,3 +28,8 @@ jobs:
 
       - name: Tests
         run: python -m pytest -q
+
+      # Held-out recall eval: fails if BM25 recall@3 or MRR drops below the
+      # measured baseline minus tolerance (constants in eval/run_eval.py).
+      - name: Recall eval gate
+        run: python eval/run_eval.py --check

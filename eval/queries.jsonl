@@ -1,0 +1,30 @@
+{"qid": "A01", "set": "A", "expected": "MEM-001", "query": "naming the menu sections for a bakery website so it feels cozy, not techy"}
+{"qid": "A02", "set": "A", "expected": "MEM-001", "query": "client says the tea shop landing page reads like a sci-fi console"}
+{"qid": "A03", "set": "A", "expected": "MEM-002", "query": "closing square bracket drops to its own row in the header links"}
+{"qid": "A04", "set": "A", "expected": "MEM-002", "query": "pill badge label breaks weirdly at large viewport widths"}
+{"qid": "A05", "set": "A", "expected": "MEM-003", "query": "nested app folder returns not found after publishing static site on netlify"}
+{"qid": "A06", "set": "A", "expected": "MEM-003", "query": "vercel subpath route shows the 404 page instead of the app"}
+{"qid": "A07", "set": "A", "expected": "MEM-004", "query": "which payment options should a Manila online shop offer"}
+{"qid": "A08", "set": "A", "expected": "MEM-004", "query": "mobile wallet and cash on delivery for filipino customers"}
+{"qid": "A09", "set": "A", "expected": "MEM-005", "query": "python -c one-liner inside powershell breaks because of the quote marks"}
+{"qid": "A10", "set": "A", "expected": "MEM-006", "query": "print with emoji crashes the script in windows cmd"}
+{"qid": "A11", "set": "A", "expected": "MEM-006", "query": "UnicodeEncodeError when logging check marks to the console"}
+{"qid": "A12", "set": "A", "expected": "MEM-007", "query": "should I drag the build folder into the netlify dashboard to ship it"}
+{"qid": "A13", "set": "A", "expected": "MEM-008", "query": "cover letter generator outputs an empty body when the header has my website link"}
+{"qid": "A14", "set": "A", "expected": "MEM-009", "query": "groq returns too many requests during parallel agent runs"}
+{"qid": "A15", "set": "A", "expected": "MEM-010", "query": "resume bullet points feel vague and need more impact"}
+{"qid": "B01", "set": "B", "expected": "MEM-001", "query": "product descriptions for a coffee roaster sound too much like a terminal"}
+{"qid": "B02", "set": "B", "expected": "MEM-002", "query": "nav menu item wraps and leaves a lone ] on the next line"}
+{"qid": "B03", "set": "B", "expected": "MEM-002", "query": "bracketed link text in a flex nav needs nowrap"}
+{"qid": "B04", "set": "B", "expected": "MEM-003", "query": "catch-all rule is swallowing the sub-app routes, check redirect order"}
+{"qid": "B05", "set": "B", "expected": "MEM-004", "query": "add a GCash option to the order form"}
+{"qid": "B06", "set": "B", "expected": "MEM-005", "query": "escaping double quotes in a powershell one-line command"}
+{"qid": "B07", "set": "B", "expected": "MEM-005", "query": "parser complains about a missing string terminator running a command on windows"}
+{"qid": "B08", "set": "B", "expected": "MEM-006", "query": "cp1252 codec error writing non-ascii text to stdout"}
+{"qid": "B09", "set": "B", "expected": "MEM-007", "query": "netlify site out of sync with the git repo after a manual upload"}
+{"qid": "B10", "set": "B", "expected": "MEM-008", "query": "regex stops reading the letter too early at the contact block"}
+{"qid": "B11", "set": "B", "expected": "MEM-008", "query": "job application letter text missing after the contact details section"}
+{"qid": "B12", "set": "B", "expected": "MEM-009", "query": "LLM API got rate limited and the mission aborted, need a retry strategy"}
+{"qid": "B13", "set": "B", "expected": "MEM-009", "query": "fall back to gemini when the groq quota is hit"}
+{"qid": "B14", "set": "B", "expected": "MEM-010", "query": "add numbers to the achievements in my CV"}
+{"qid": "B15", "set": "B", "expected": "MEM-010", "query": "recruiter feedback says the experience section lacks measurable results"}

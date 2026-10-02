@@ -23,7 +23,7 @@ Zero-Dependency Cognitive Memory Engine (Self-Improving Agent Flywheel). Enables
 - No build step required (pure Python).
 
 ## Test Commands
-- Run test suite (same as CI): `python -m pytest -q` (covers `test_memory.py` and `test_reflect_safety.py`)
+- Run test suite (same as CI): `python -m pytest -q` (covers `test_memory.py`, `test_reflect_safety.py` and `eval/test_run_eval.py`)
 
 ## Important Constraints
 - **Zero Dependencies**: Must remain 100% standard library Python (`math`, `json`, `os`, `sys`, `unittest`, `re`).
@@ -36,6 +36,7 @@ Zero-Dependency Cognitive Memory Engine (Self-Improving Agent Flywheel). Enables
 - Never log plaintext API keys, passwords, or personal credentials into episodic memory.
 - `reflect.py` redacts credential shapes (Groq, Google, OpenAI/Anthropic keys, Discord tokens, Bearer headers) before writing to `store/experience_store.jsonl`. Other personal data in stack traces is still the caller's job to strip.
 - Writes hold an OS file lock (`msvcrt` on Windows, `fcntl` elsewhere) on `store/experience_store.jsonl.lock` for the whole read-modify-write, and replace the store atomically. The OS releases the lock if the holder dies; there is no age-based takeover. Other writers wait up to 10 s, then raise `TimeoutError`. The `.lock` file stays on disk (gitignored); don't delete it.
+- Recall eval gate (CI): `python eval/run_eval.py --check`. Full eval + latency at N=10/1k/10k: `python eval/run_eval.py` (writes `eval/results/YYYY-MM-DD.md`). When `eval/queries.jsonl` changes, re-measure and update the baseline constants in `eval/run_eval.py`.
 - Measure recall latency with `python bench_recall.py` (prints p50/p95/max with date, CPU, OS, Python and store size).
 
 ## Deployment Information
