@@ -1,7 +1,7 @@
 # 🧠 Cognitive Memory Core
 
 > **Lightweight episodic memory retrieval engine in pure Python standard library using BM25 heuristic scoring for developer coding agents.**  
-> Zero external dependencies · Sub-millisecond execution · Fully tested with `unittest` (10/10 passing).
+> Zero external dependencies · Sub-millisecond execution · Tested with pytest and a held-out retrieval eval in CI.
 
 [![CI](https://github.com/hanslaureles/cognitive-memory-core/actions/workflows/ci.yml/badge.svg)](https://github.com/hanslaureles/cognitive-memory-core/actions/workflows/ci.yml)
 
@@ -24,7 +24,7 @@ Vector databases (Chroma, Pinecone, Qdrant) solve semantic search, but introduce
 1. **`reflect.py`**: Captures structured post-mortem schemas (`trigger`, `symptom`, `root_cause`, `rule`, `tags`).
 2. **`recall.py`**: Executes BM25 keyword scoring + tag boosting over JSONL episodic records, ranking matching rules in `<5ms`.
 3. **`crystallize.py`**: Compiles validated episodic reflections into persistent Markdown rule files for LLM system prompts (`Learned_Rules.md`).
-4. **`test_memory.py`**: Comprehensive 10-test unit test suite validating tokenization, scoring, ranking, and deduplication.
+4. **Tests + eval**: pytest suites for retrieval, write safety and redaction, plus a held-out retrieval eval (`eval/`) gated in CI.
 
 ---
 
@@ -71,15 +71,17 @@ Vector databases (Chroma, Pinecone, Qdrant) solve semantic search, but introduce
 
 ## 🧪 Test Suite & Verification
 
-Run the test suite directly with Python:
+Run the same checks as CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)); pytest is the only install:
 
 ```bash
-python test_memory.py
+python -m pytest -q
+python eval/run_eval.py --check
 ```
 
-Output:
-```text
-..........
+- `test_memory.py`: tokenization, BM25 ranking on seeded queries, injection header, reflection dedup and crystallization.
+- `test_reflect_safety.py`: concurrent writers, lock release when a writer dies, lock timeout, and credential redaction.
+- `eval/test_run_eval.py`: eval metric math, and that every eval query is held out from the store.
+- `eval/run_eval.py --check`: fails if BM25 recall@3 or MRR on the held-out queries drops below the measured baseline.
 ----------------------------------------------------------------------
 Ran 10 tests in 0.015s
 
@@ -117,7 +119,7 @@ OK
 
 Measured 2026-10-02 on an Intel Core i5-12400F, Windows 11, Python 3.11.9, commit `a9a7e96`. Latency is per `recall_memories()` call, including reading and parsing the JSONL store.
 
-What it shows: on today's 10-entry store, BM25 is not clearly better than grep. It ties on MRR, and with 10 entries a top-3 list covers 30% of the store. Latency grows linearly, because every call re-reads and re-scores the whole store. CI fails if BM25 recall@3 or MRR drops below these numbers minus a tolerance (`python eval/run_eval.py --check`).
+What it shows: on today's 10-entry store, BM25 is not clearly better than a naive substring baseline (it counts stopwords and breaks ties in store order). It ties on MRR, and with 10 entries a top-3 list covers 30% of the store. Latency grows linearly, because every call re-reads and re-scores the whole store. CI fails if BM25 recall@3 or MRR drops below these numbers minus a tolerance (`python eval/run_eval.py --check`).
 
 ---
 

@@ -64,7 +64,7 @@ def rank_bm25(query, store_path):
 
 
 def rank_substring(query, memories):
-    """Naive grep baseline: count distinct query words found as substrings, ties in store order."""
+    """Naive substring baseline (not a real grep): count distinct query words found as substrings, ties in store order."""
     words = set(query.lower().split())
     hits = [(sum(w in memory_text(m).lower() for w in words), i, m["id"]) for i, m in enumerate(memories)]
     return [mid for n, _, mid in sorted(hits, key=lambda h: (-h[0], h[1])) if n > 0]
